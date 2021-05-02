@@ -1,0 +1,98 @@
+
+service: presigned-url-generator
+
+frameworkVersion: '2'
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  memorySize: 128
+
+  # you can overwrite defaults here
+  region: us-west-2
+  role: !GetAtt presignedUrlGeneratorLambdaRole.Arn
+
+plugins:
+    - serverless-pseudo-parameters
+    - serverless-stage-manager
+    - serverless-sync-s3
+
+# you can add packaging information here
+package:
+    exclude:
+        - '**/*.ts'
+        - README.md
+        - package.json
+        - yarn.lock
+        - git/**
+        - gitignore
+        - DS_Store
+        - npm-debug.log
+        - serverless/**
+        - serverless_plugins/**
+
+functions:
+    generatePresignedUrl:
+        handler: src/handler.index
+        name: generate-pre-signed-url-${opt:stage, self:provider.stage}
+        description: Generate Pre-Singed URL
+        events:
+          - http:
+              cors: true
+              method: get
+              path: /{proxy+}
+        environment:
+            S3_BUCKET_NAME: presigned-url-assets
+
+resources:
+    Resources:
+        presignedUrlGeneratorLambdaRole:
+            Type: AWS::IAM::Role
+            Properties:
+                AssumeRolePolicyDocument:
+                    Version: "2012-10-17"
+                    Statement:
+                        - Effect: "Allow"
+                          Principal:
+                              Service: "lambda.amazonaws.com"
+                          Action: "sts:AssumeRole"
+                Policies:
+                    - PolicyName: "presigned-url-generator-lambda-${opt:stage, self:provider.stage}-policy"
+                      PolicyDocument:
+                          Version: "2012-10-17"
+                          Statement:
+                              - Effect: "Allow"
+                                Action:
+                                    - "logs:CreateLogStream"
+                                    - "logs:CreateLogGroup"
+                                Resource: "arn:aws:logs:us-west-2:#{AWS::AccountId}:log-group:/aws/lambda/presigned-url-generator-lambda-${opt:stage, self:provider.stage}*:*"
+                              - Effect: "Allow"
+                                Action:
+                                    - "logs:PutLogEvents"
+                                Resource: "arn:aws:logs:us-west-2:#{AWS::AccountId}:log-group:/aws/lambda/presigned-url-generator-lambda-${opt:stage, self:provider.stage}*:*:*"
+                              - Effect: "Allow"
+                                Action:
+                                    - "ec2:CreateNetworkInterface"
+                                    - "ec2:DescribeNetworkInterfaces"
+                                    - "ec2:DeleteNetworkInterface"
+                                    - "ec2:AssignPrivateIpAddresses"
+                                    - "ec2:UnassignPrivateIpAddresses"
+                                Resource: "*"
+                              - Effect: "Allow"
+                                Action:
+                                    - "s3:GetObject"
+                                Resource: "arn:aws:s3:::presigned-url-assets/*"
+        S3OutputBucket:
+            Type: AWS::S3::Bucket
+            Properties:
+                BucketName: presigned-url-assets
+
+custom:
+    syncS3:
+        - bucketName: presigned-url-assets
+          localDir: assets
+    stages:
+        - dev
+    envVariables:
+        dev:
+            
